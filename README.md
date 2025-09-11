@@ -1,3 +1,6 @@
+＃＃＃ 注意
+＊code.tsを起動するためにはnpm run watchを実行している状態でなければならない
+
 Below are the steps to get your plugin running. You can also find instructions at:
 
   https://www.figma.com/plugin-docs/plugin-quickstart-guide/
