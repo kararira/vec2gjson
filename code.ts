@@ -77,6 +77,14 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
       };
       geoJson.features.push(feature);
     });
+
+    if(geoJson.features.length > 0) {
+      console.log('--- GeoJSON出力 ---');
+      // JSON.stringifyの第3引数でインデントを付け、見やすくする
+      console.log(JSON.stringify(geoJson, null, 2));
+    } else {
+      console.log("GeoJsonないみたい");
+    }
     
     if(geoJson.features.length > 0) {
       // ★変更点: 生成したGeoJSONをUIに送信する
