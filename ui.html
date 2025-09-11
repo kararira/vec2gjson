@@ -1,0 +1,45 @@
+<!-- <h2>Rectangle Creator</h2>
+<p>Count: <input id="count" type="number" value="5"></p>
+<button id="create">Create</button>
+<button id="cancel">Cancel</button>
+<script>
+
+document.getElementById('create').onclick = () => {
+  const textbox = document.getElementById('count');
+  const count = parseInt(textbox.value, 10);
+  parent.postMessage({ pluginMessage: { type: 'create-shapes', count } }, '*')
+}
+
+document.getElementById('cancel').onclick = () => {
+  console.log("ok?")
+  parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*')
+}
+</script> -->
+
+<h2>Fig2GeoJson</h2>
+<div name="name-input-container">
+  <label>name: </label>
+  <input id="name-input" type="text" placeholder="施設名を入力してください">
+</div>
+<div name="type-input-container">
+  <label>type: </label>
+  <input id="type-input" type="text" placeholder="施設の種類を入力してください">
+</div>
+<div name="floor-select-container">
+  <label>floor: </label>
+  <input id="floor-input" type="number" placeholder="階数を入力してください">
+</div>
+<button id="gjson">Convert to GeoJson</button>
+<button id="end">end this</button>
+
+
+<script>
+document.getElementById("gjson").onclick = () => {
+  parent.postMessage({ pluginMessage: { type: 'conv' } }, '*')
+}
+document.getElementById("end").onclick = () => {
+  console.log("end this plugin")
+  parent.postMessage({ pluginMessage: { type: 'end' } }, '*')
+}
+
+</script>
