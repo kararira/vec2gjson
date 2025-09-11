@@ -1,45 +1,77 @@
-<!-- <h2>Rectangle Creator</h2>
-<p>Count: <input id="count" type="number" value="5"></p>
-<button id="create">Create</button>
-<button id="cancel">Cancel</button>
-<script>
+<style>
+  body {
+    font-family: sans-serif;
+    text-align: center;
+    padding: 16px;
+  }
+  button {
+    background-color: #0d99ff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled {
+    background-color: #e0e0e0;
+    cursor: not-allowed;
+  }
+  p {
+    font-size: 12px;
+    color: #555;
+  }
+</style>
 
-document.getElementById('create').onclick = () => {
-  const textbox = document.getElementById('count');
-  const count = parseInt(textbox.value, 10);
-  parent.postMessage({ pluginMessage: { type: 'create-shapes', count } }, '*')
-}
-
-document.getElementById('cancel').onclick = () => {
-  console.log("ok?")
-  parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*')
-}
-</script> -->
-
-<h2>Fig2GeoJson</h2>
-<div name="name-input-container">
-  <label>name: </label>
-  <input id="name-input" type="text" placeholder="施設名を入力してください">
-</div>
-<div name="type-input-container">
-  <label>type: </label>
-  <input id="type-input" type="text" placeholder="施設の種類を入力してください">
-</div>
-<div name="floor-select-container">
-  <label>floor: </label>
-  <input id="floor-input" type="number" placeholder="階数を入力してください">
-</div>
-<button id="gjson">Convert to GeoJson</button>
-<button id="end">end this</button>
-
+<h2>GeoJSON エクスポート</h2>
+<button id="export-button" disabled>データを処理中...</button>
+<p id="message"></p>
 
 <script>
-document.getElementById("gjson").onclick = () => {
-  parent.postMessage({ pluginMessage: { type: 'conv' } }, '*')
-}
-document.getElementById("end").onclick = () => {
-  console.log("end this plugin")
-  parent.postMessage({ pluginMessage: { type: 'end' } }, '*')
-}
+  const exportButton = document.getElementById('export-button');
+  const messageEl = document.getElementById('message');
+  let geoJsonData = null;
+  let fileName = 'map.geojson';
 
+  // code.tsからメッセージを受け取る
+  window.onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    
+    if (msg.type === 'export-geojson') {
+      geoJsonData = msg.data;
+      fileName = msg.filename;
+      exportButton.disabled = false;
+      exportButton.textContent = 'GeoJSONを保存';
+      messageEl.textContent = `${msg.data.split('"Feature"').length - 1}件のデータを準備しました。`;
+    } 
+    else if (msg.type === 'error') {
+      messageEl.textContent = msg.message;
+      // 3秒後にプラグインを閉じる
+      setTimeout(() => {
+        parent.postMessage({ pluginMessage: { type: 'close' } }, '*');
+      }, 3000);
+    }
+  };
+
+  // ボタンクリックでダウンロード処理を実行
+  exportButton.onclick = () => {
+    if (!geoJsonData) return;
+
+    // 1. Blobオブジェクトを作成
+    const blob = new Blob([geoJsonData], { type: 'application/json' });
+    
+    // 2. ダウンロード用のURLを生成
+    const url = URL.createObjectURL(blob);
+    
+    // 3. 非表示の<a>タグを作成してクリックさせる
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName; // ダウンロードファイル名を設定
+    
+    document.body.appendChild(link);
+    link.click(); // プログラム的にクリックしてダウンロードを開始
+    document.body.removeChild(link);
+    
+    URL.revokeObjectURL(url); // メモリを解放
+  };
 </script>
