@@ -19,33 +19,12 @@ interface GeoJsonFeature {
   };
 }
 
-// ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-// ★ 基準点(0,0)としたいオブジェクトのレイヤー名を指定 ★
-// ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-const ORIGIN_OBJECT_NAME = "background-image";
+const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
+  const feature_list: GeoJsonFeature[] = [];
 
+  const frame_height = one_frame.height;
 
-// UIを表示し、サイズを指定する
-figma.showUI(__html__, { width: 280, height: 120 });
-
-// -----------------------------------------------------------------
-// メインの処理
-// -----------------------------------------------------------------
-const selection = figma.currentPage.selection;
-
-if (selection.length !== 1 || selection[0].type !== 'FRAME') {
-  figma.ui.postMessage({ type: 'error', message: 'フレームを1つだけ選択してください。' });
-} else {
-  const selectedFrame = selection[0];
-  const frame_height = selectedFrame.height;
-
-  const geoJson: GeoJsonFeatureCollection = {
-    type: "FeatureCollection",
-    features: [],
-  };
-
-  const vectorNodes = selectedFrame.findAll(node => node.type === 'VECTOR') as VectorNode[];
-
+  const vectorNodes = one_frame.findAll(node => node.type === 'VECTOR') as VectorNode[];
   if (vectorNodes.length === 0) {
     figma.ui.postMessage({ type: 'error', message: '選択されたフレーム内にベクターオブジェクトが見つかりませんでした。' });
   } else {
@@ -85,18 +64,46 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
           figmaNodeName: vector.name,
         },
       };
-      geoJson.features.push(feature);
+      feature_list.push(feature);
     });
+  }
+  return feature_list;
+}
 
-    // ★変更点4: UIへのメッセージ送信ロジックを整理
-    if (geoJson.features.length > 0) {
-      figma.ui.postMessage({
-        type: 'export-geojson',
-        data: JSON.stringify(geoJson, null, 2),
-        filename: `${selectedFrame.name}.geojson`
-      });
-    } else {
-      figma.ui.postMessage({ type: 'error', message: '処理できる形式のベクターオブジェクトがありませんでした。' });
-    }
+// UIを表示し、サイズを指定する
+figma.showUI(__html__, { width: 280, height: 120 });
+
+// -----------------------------------------------------------------
+// メインの処理
+// -----------------------------------------------------------------
+const selection = figma.currentPage.selection;
+
+
+if (selection.length !== 1 || selection[0].type !== 'FRAME') {
+  figma.ui.postMessage({ type: 'error', message: 'フレームを1つだけ選択してください。' });
+} else {
+  const selectedFrame = selection[0];
+  
+
+  const geoJson: GeoJsonFeatureCollection = {
+    type: "FeatureCollection",
+    features: [],
+  };
+
+  const feature_list = generate_feature_list_from_one_frame(selectedFrame);
+
+  geoJson.features = geoJson.features.concat(feature_list);
+
+  // ★変更点4: UIへのメッセージ送信ロジックを整理
+  if (geoJson.features.length > 0) {
+    figma.ui.postMessage({
+      type: 'export-geojson',
+      data: JSON.stringify(geoJson, null, 2),
+      filename: `${selectedFrame.name}.geojson`
+    });
+  } else {
+    figma.ui.postMessage({ type: 'error', message: '処理できる形式のベクターオブジェクトがありませんでした。' });
   }
 }
+
+//postMessageは一度の実行で一度だけ（一度以上はあとに送ったもので上書きされる
