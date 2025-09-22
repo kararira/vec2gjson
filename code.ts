@@ -14,12 +14,12 @@ interface GeoJsonFeature {
   properties: {
     name: string;
     category: string;
-    floor: number;
+    floor: string;
     figmaNodeName: string;
   };
 }
 
-const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
+const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: string) => {
   const feature_list: GeoJsonFeature[] = [];
 
   const frame_height = one_frame.height;
@@ -27,16 +27,18 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
   const vectorNodes = one_frame.findAll(node => node.type === 'VECTOR') as VectorNode[];
   if (vectorNodes.length === 0) {
     figma.ui.postMessage({ type: 'error', message: '選択されたフレーム内にベクターオブジェクトが見つかりませんでした。' });
+    
   } else {
     vectorNodes.forEach(vector => {
       const nameParts = vector.name.split(',').map(part => part.trim());
-      if (nameParts.length !== 3) { return; }
+      if (nameParts.length !== 2) { return; }
 
-      const [facilityName, category, floorStr] = nameParts;
-      const floor = parseInt(floorStr, 10);
-      if (isNaN(floor)) { return; }
+      const [facilityName, category] = nameParts;
+      // const floor = parseInt(floorStr, 10);
+      // if (isNaN(floor)) { return; }
 
       const vertices = vector.vectorNetwork.vertices;
+      
 
       // ★変更点3: 各頂点の座標を基準オブジェクトからの相対座標に変換
       const coordinates = vertices.map(v => {
@@ -60,7 +62,7 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
         properties: {
           name: facilityName,
           category: category,
-          floor: floor,
+          floor: floorStr,
           figmaNodeName: vector.name,
         },
       };
@@ -94,7 +96,7 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
   };
 
   target_frames.forEach(one_frame => {
-    geoJson.features = geoJson.features.concat(generate_feature_list_from_one_frame(one_frame));
+    geoJson.features = geoJson.features.concat(generate_feature_list_from_one_frame(one_frame, one_frame.name));
   });
 
   // ★変更点4: UIへのメッセージ送信ロジックを整理
