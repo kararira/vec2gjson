@@ -83,16 +83,19 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
   figma.ui.postMessage({ type: 'error', message: 'フレームを1つだけ選択してください。' });
 } else {
   const selectedFrame = selection[0];
-  
+  const target_frames = selectedFrame.findAll(node => node.type === 'FRAME') as FrameNode[];
+  if (target_frames.length === 0) {
+    figma.ui.postMessage({type: "error", message: "選択したフレーム内にフレームが存在するようにしてください"});
+  }
 
   const geoJson: GeoJsonFeatureCollection = {
     type: "FeatureCollection",
     features: [],
   };
 
-  const feature_list = generate_feature_list_from_one_frame(selectedFrame);
-
-  geoJson.features = geoJson.features.concat(feature_list);
+  target_frames.forEach(one_frame => {
+    geoJson.features = geoJson.features.concat(generate_feature_list_from_one_frame(one_frame));
+  });
 
   // ★変更点4: UIへのメッセージ送信ロジックを整理
   if (geoJson.features.length > 0) {
