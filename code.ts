@@ -101,23 +101,44 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: st
         const orderedVertices = orderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
       
         // ★変更点3: 各頂点の座標を基準オブジェクトからの相対座標に変換
-        const coordinates = orderedVertices.map(v => {
+        const coordinates = [orderedVertices.map(v => {
           // 頂点の絶対座標 = ベクター自体の座標 + ベクター内の頂点座標
           const absoluteX = targetNode.x + v.x;
           const absoluteY = targetNode.y + v.y;
           // 絶対座標から基準オブジェクトの座標を引く
           return [ absoluteX, frame_height - absoluteY];
-        });
+        })];
 
         if (coordinates.length > 0) {
-          coordinates.push(coordinates[0]);
+          coordinates[0].push(coordinates[0][0]);
+        }
+
+        //内部に空洞があるような図形はcoordinatesにループの座標を追加する
+        if (targetNode.vectorNetwork.regions !== undefined && targetNode.vectorNetwork.regions.length !== 0) {
+          console.log(targetNode.parent?.name, targetNode.name);
+          console.log(targetNode.vectorNetwork.regions[0].loops);
+          targetNode.vectorNetwork.regions[0].loops.slice(1).forEach((loop) => {
+            console.log(`loopだよ: ${loop}`);
+            const now_segments: VectorSegment[] = loop.map(segment_index => targetNode.vectorNetwork.segments[segment_index]);
+            const orderedVertexIndices = traceSingleLoop(now_segments);
+            if (orderedVertexIndices.length < 3) return; // 3頂点未満はポリゴンにできない
+            // 取得したインデックスの順序で、頂点オブジェクトの配列を再構築
+            const orderedVertices = orderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
+            coordinates.push(orderedVertices.map(v => {
+              // 頂点の絶対座標 = ベクター自体の座標 + ベクター内の頂点座標
+              const absoluteX = targetNode.x + v.x;
+              const absoluteY = targetNode.y + v.y;
+              // 絶対座標から基準オブジェクトの座標を引く
+              return [ absoluteX, frame_height - absoluteY];
+            }));
+          });
         }
 
         const feature: GeoJsonFeature = {
           type: "Feature",
           geometry: {
             type: "Polygon",
-            coordinates: [coordinates],
+            coordinates: coordinates,
           },
           properties: {
             name: facilityName,
