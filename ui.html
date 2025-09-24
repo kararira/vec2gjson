@@ -26,6 +26,7 @@
 <h2>GeoJSON エクスポート</h2>
 <button id="export-button" disabled>データを処理中...</button>
 <p id="message"></p>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 
 <script>
   const exportButton = document.getElementById('export-button');
@@ -33,12 +34,28 @@
   let geoJsonData = null;
   let fileName = 'map.geojson';
 
+  //これいる？巻き順が決まっているらしいけどなんかなくてもうまくいく
+  function fixWindingOrder(geoJsonData) {
+    const correctedFeatures = geoJsonData.features.map((feature) => {
+      // turf.rewindは、geojsonの仕様通りに巻き順を自動修正してくれる
+      // { inplace: false } で元のデータを変更しないようにする
+      return turf.rewind(feature, { inplace: false });
+    });
+    
+    console.log("winding rode");
+    return {
+      type: 'FeatureCollection',
+      features: correctedFeatures,
+    };
+  }
+
   // code.tsからメッセージを受け取る
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
     
     if (msg.type === 'export-geojson') {
-      geoJsonData = msg.data;
+      geoJsonData = JSON.stringify(fixWindingOrder(JSON.parse(msg.data)), null, 2);
+      // geoJsonData = msg.data;
       fileName = msg.filename;
       exportButton.disabled = false;
       exportButton.textContent = 'GeoJSONを保存';
