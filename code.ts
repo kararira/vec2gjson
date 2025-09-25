@@ -12,10 +12,9 @@ interface GeoJsonFeature {
     coordinates: number[][][];
   };
   properties: {
-    name: string;
+    id: string;
     category: string;
     floor: string;
-    figmaNodeName: string;
   };
 }
 
@@ -141,10 +140,9 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: st
             coordinates: coordinates,
           },
           properties: {
-            name: facilityName,
+            id: facilityName,
             category: category ? category : "test",
-            floor: floorStr,
-            figmaNodeName: targetNode.name,
+            floor: floorStr
           },
         };
         feature_list.push(feature);
@@ -160,10 +158,9 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: st
             coordinates: [coordinates],
           },
           properties: {
-            name: facilityName,
+            id: facilityName,
             category: category ? category : "test",
-            floor: floorStr,
-            figmaNodeName: targetNode.name,
+            floor: floorStr
           },
         };
         feature_list.push(feature);
