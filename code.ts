@@ -185,24 +185,31 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
     figma.ui.postMessage({type: "error", message: "選択したフレーム内にフレームが存在するようにしてください"});
   }
 
-  const geoJson: GeoJsonFeatureCollection = {
-    type: "FeatureCollection",
-    features: [],
-  };
+  // ★★★ 変更点: フロアごとのデータを格納する配列を作成 ★★★
+  const allFloorsData: { frameId: string; geoJson: GeoJsonFeatureCollection }[] = [];
 
   target_frames.forEach(one_frame => {
-    geoJson.features = geoJson.features.concat(generate_feature_list_from_one_frame(one_frame));
+    // 各フロアのフィーチャーリストを生成
+    const features = generate_feature_list_from_one_frame(one_frame);
+
+    // フロアIDとGeoJSONデータのペアを配列に追加
+    allFloorsData.push({
+      frameId: one_frame.name, // or one_frame.id
+      geoJson: {
+        type: "FeatureCollection",
+        features: features
+      }
+    });
   });
 
-  // ★変更点4: UIへのメッセージ送信ロジックを整理
-  if (geoJson.features.length > 0) {
+  if (allFloorsData.length > 0) {
     figma.ui.postMessage({
-      type: 'export-geojson',
-      data: JSON.stringify(geoJson, null, 2),
-      filename: `${selectedFrame.name}.geojson`
+      type: 'export-geojson-all-floors', // ★ メッセージタイプを変更
+      data: JSON.stringify(allFloorsData, null, 2),
+      filenamePrefix: "" // ファイル名のプレフィックス
     });
   } else {
-    figma.ui.postMessage({ type: 'error', message: '処理できる形式のベクターオブジェクトもしくはフレームオブジェクトがありませんでした。' });
+    figma.ui.postMessage({ type: 'error', message: '処理できるオブジェクトが見つかりませんでした。' });
   }
 }
 

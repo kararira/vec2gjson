@@ -24,132 +24,117 @@
 </style>
 
 <h2>GeoJSON エクスポート</h2>
-<button id="export-button" disabled>データを処理中...</button>
-<button id="generate-walkable-button" disabled> すべてのフロアの歩行可能エリアを生成</button>
-<p id="message"></p>
+<p id="message">データを待っています...</p>
+<button id="export-all-button" disabled>1. 全フロアのGeoJSONを保存</button>
+<button id="generate-walkable-button" disabled>2. 全フロアの歩行可能エリアを生成</button><p id="message"></p>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 
 <script>
-  const exportButton = document.getElementById('export-button');
+  const exportAllButton = document.getElementById('export-all-button');
   const generateButton = document.getElementById('generate-walkable-button');
   const messageEl = document.getElementById('message');
-  let geoJsonData = null;
-  let fileName = 'map.geojson';
+  
+  let allFloorsData = null; // フロアごとのデータリストを保持
+  let filenamePrefix = 'map';
 
   function downloadJson(jsonData, fileName) {
     const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
+    link.href = url; link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    // 連続ダウンロードのために少し待機
     return new Promise(resolve => setTimeout(resolve, 100));
   }
 
-  //これいる？巻き順が決まっているらしいけどなんかなくてもうまくいく
   function fixWindingOrder(geoJsonData) {
     const correctedFeatures = geoJsonData.features.map((feature) => {
-      // turf.rewindは、geojsonの仕様通りに巻き順を自動修正してくれる
-      // { inplace: false } で元のデータを変更しないようにする
       return turf.rewind(feature, { inplace: false });
     });
-    
-    console.log("winding rode");
-    return {
-      type: 'FeatureCollection',
-      features: correctedFeatures,
-    };
+    return { type: 'FeatureCollection', features: correctedFeatures };
   }
 
   // code.tsからメッセージを受け取る
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
     
-    if (msg.type === 'export-geojson') {
-      geoJsonData = JSON.stringify(fixWindingOrder(JSON.parse(msg.data)), null, 2);
-      fileName = msg.filename;
-      exportButton.disabled = false;
+    if (msg.type === 'export-geojson-all-floors') {
+      allFloorsData = JSON.parse(msg.data); // [{ frameId: "...", geoJson: {...} }, ...]
+      filenamePrefix = msg.filenamePrefix;
+      
+      exportAllButton.disabled = false;
       generateButton.disabled = false;
-      exportButton.textContent = 'GeoJSONを保存';
-      messageEl.textContent = `${msg.data.split('"Feature"').length - 1}件のデータを準備しました。`;
+      exportAllButton.textContent = `1. 全フロアのGeoJSONを保存 (${allFloorsData.length}件)`;
+      messageEl.textContent = "データ受信完了。各操作を選択してください。";
     } 
     else if (msg.type === 'error') {
       messageEl.textContent = msg.message;
-      // 3秒後にプラグインを閉じる
-      setTimeout(() => {
-        parent.postMessage({ pluginMessage: { type: 'close' } }, '*');
-      }, 3000);
     }
   };
 
-  // ボタンクリックでダウンロード処理を実行
-  exportButton.onclick = () => {
-    if (!geoJsonData) return;
-    downloadJson(geoJsonData, fileName);
+  // 全フロアのGeoJSONをそれぞれダウンロード
+  exportAllButton.onclick = async () => {
+    if (!allFloorsData) return;
+    for (const floorData of allFloorsData) {
+      const correctedGeoJson = fixWindingOrder(floorData.geoJson);
+      const fileName = `${floorData.frameId}.geojson`;
+      // const fileName = `${filenamePrefix}-${floorData.frameId}.geojson`;
+      await downloadJson(JSON.stringify(correctedGeoJson, null, 2), fileName);
+    }
+    messageEl.textContent = "全フロアのGeoJSONを保存しました。";
   };
-
-  // ★★★ 歩行可能エリアをフロアごとに生成するボタンの処理 ★★★
+  
+  // 全フロアの歩行可能エリアをそれぞれ生成・ダウンロード
   generateButton.onclick = async () => {
-    if (!geoJsonData) return;
-    geoJsonData = JSON.parse(geoJsonData);
+    if (!allFloorsData) return;
 
     messageEl.textContent = "全フロアの歩行可能エリアを計算中...";
     generateButton.disabled = true;
 
     try {
-      // 1. 全データからユニークなフロアIDのリストを作成
-      const floorIds = [...new Set(geoJsonData.features.map(f => f.properties.floor))];
-      console.log('対象フロア:', floorIds);
-
-      // 2. 各フロアIDでループ処理
-      for (const floorId of floorIds) {
+      // 各フロアデータでループ処理
+      for (const floorData of allFloorsData) {
+        const floorId = floorData.frameId;
+        const floorGeoJson = floorData.geoJson;
         messageEl.textContent = `${floorId} のエリアを計算中...`;
 
-        // 現在のフロアのフィーチャーだけを抽出
-        const floorFeatures = geoJsonData.features.filter(f => f.properties.floor === floorId);
-
-        // 床(base)、階段(stairs)、障害物(obstacles)にフィーチャーを分類
-        const baseFeatures = floorFeatures.filter(f => f.properties.id === 'base');
-        const stairFeatures = floorFeatures.filter(f => f.properties.id.split("-")[2] === 'stairs');
-        const obstacleFeatures = floorFeatures.filter(f => f.properties.id !== 'base' && f.properties.id.split("-")[2] !== 'stairs' && f.properties.id.split("-")[2] !== 'elevator');
+        const baseFeatures = floorGeoJson.features.filter(f => f.properties.id === 'base');
+        const stairFeatures = floorGeoJson.features.filter(f => f.properties.id.includes('stairs')); // 'stairs'を含むかで判定
+        const obstacleFeatures = floorGeoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs') &&  !f.properties.id.includes('elevator'));
 
         if (baseFeatures.length === 0) {
-          console.warn(`フロア "${floorId}" に "base" オブジェクトが見つかりません。スキップします。`);
-          continue; // 次のフロアへ
+          console.warn(`フロア "${floorId}" に "base" オブジェクトが見つかりません。`);
+          continue;
         }
         
         let walkableArea = baseFeatures[0];
 
-        // 床から障害物をすべて引き算
         obstacleFeatures.forEach(obstacle => {
-          console.log(walkableArea, obstacle);
-          const result = turf.difference(turf.featureCollection([walkableArea, obstacle]));
-          if (result) {
-            walkableArea = result;
-          }
+          const result = turf.difference(walkableArea, obstacle);
+          if (result) walkableArea = result;
         });
         
-        // 階段をすべて足し算
         // stairFeatures.forEach(stair => {
         //   walkableArea = turf.union(walkableArea, stair);
         // });
         
+        // 元のプロパティを維持しつつ、新しい名前を付ける
+        // walkableArea.properties = {
+        //     ...walkableArea.properties,
+        //     name: `${floorId}-walkable-area`,
+        // };
+
         const finalGeoJson = {
           type: "FeatureCollection",
           features: [walkableArea]
         };
 
-        // フロアごとに別々のファイルとしてダウンロード
         const newFileName = `walkable-area-${floorId}.geojson`;
         await downloadJson(JSON.stringify(finalGeoJson, null, 2), newFileName);
       }
-
       messageEl.textContent = "すべてのフロアの処理が完了しました。";
-
     } catch (error) {
       console.error("歩行可能エリアの生成中にエラー:", error);
       messageEl.textContent = `エラー: ${error.message}`;
