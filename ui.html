@@ -1,42 +1,43 @@
 <style>
-  body {
-    font-family: sans-serif;
-    text-align: center;
-    padding: 16px;
-  }
+  body { font-family: sans-serif; text-align: center; padding: 16px; }
   button {
-    background-color: #0d99ff;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 4px;
-    font-size: 14px;
-    cursor: pointer;
+    background-color: #0d99ff; color: white; border: none; padding: 10px 20px;
+    border-radius: 4px; font-size: 14px; cursor: pointer; display: block; width: 100%; margin-bottom: 8px;
   }
-  button:disabled {
-    background-color: #e0e0e0;
-    cursor: not-allowed;
-  }
-  p {
-    font-size: 12px;
-    color: #555;
-  }
+  button:disabled { background-color: #e0e0e0; cursor: not-allowed; }
+  p { font-size: 12px; color: #555; }
+  /* ★ 追加: 一括ボタン用のスタイル */
+  .master-buttons { border-bottom: 2px solid #0d99ff; padding-bottom: 16px; margin-bottom: 16px; }
+  .master-buttons button.walkable { background-color: #28a745; }
+
+  .floor-group { border: 1px solid #ccc; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .floor-title { font-weight: bold; margin-bottom: 8px; }
+  .floor-buttons { display: flex; gap: 8px; }
+  .floor-buttons button { width: 50%; font-size: 12px; padding: 8px; }
+  .floor-buttons button.walkable { background-color: #28a745; }
 </style>
 
 <h2>GeoJSON エクスポート</h2>
 <p id="message">データを待っています...</p>
-<button id="export-all-button" disabled>1. 全フロアのGeoJSONを保存</button>
-<button id="generate-walkable-button" disabled>2. 全フロアの歩行可能エリアを生成</button><p id="message"></p>
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 
+<div id="master-buttons-area" class="master-buttons" style="display: none;">
+  <button id="export-all-master-button">全てのGeoJSONを一括保存</button>
+  <button id="generate-all-master-button" class="walkable">全ての歩行可能エリアを一括生成</button>
+</div>
+<div id="separated-buttons-area"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 <script>
-  const exportAllButton = document.getElementById('export-all-button');
-  const generateButton = document.getElementById('generate-walkable-button');
+  const masterButtonsArea = document.getElementById('master-buttons-area');
+  const exportAllMasterButton = document.getElementById('export-all-master-button');
+  const generateAllMasterButton = document.getElementById('generate-all-master-button');
+  const separatedButtonsArea = document.getElementById('separated-buttons-area');
   const messageEl = document.getElementById('message');
   
-  let allFloorsData = null; // フロアごとのデータリストを保持
+  let allFloorsData = null;
   let filenamePrefix = 'map';
 
+  // (downloadJson関数とfixWindingOrder関数は変更なし)
   function downloadJson(jsonData, fileName) {
     const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -56,90 +57,141 @@
     return { type: 'FeatureCollection', features: correctedFeatures };
   }
 
+  // ★★★ 追加: 個別処理を関数化 ★★★
+
+  // 1フロア分のGeoJSONを保存する関数
+  function handleSaveGeoJson(floorData) {
+    const corrected = fixWindingOrder(floorData.geoJson);
+    const fileName = `${floorData.frameId}.geojson`;
+    return downloadJson(JSON.stringify(corrected, null, 2), fileName);
+  }
+
+  // 1フロア分の歩行可能エリアを生成・保存する関数
+  function handleGenerateWalkable(floorData) {
+    try {
+      const { frameId, geoJson } = floorData;
+      const base = geoJson.features.find(f => f.properties.id === 'base');
+      if (!base) {
+        throw new Error(`フロア "${frameId}" に "base" が見つかりません。`);
+      }
+      // const stairs = geoJson.features.filter(f => f.properties.id.includes('stairs'));
+      const obstacles = geoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs') && !f.properties.id.includes('elevator'));
+
+      let walkableArea = base;
+      obstacles.forEach(obs => {
+        const result = turf.difference(turf.featureCollection([walkableArea, obs]));
+        if (result) walkableArea = result;
+      });
+      // stairs.forEach(s => {
+      //   walkableArea = turf.union(walkableArea, s);
+      // });
+      
+      // walkableArea.properties = { ...walkableArea.properties, name: `${frameId}-walkable` };
+      const finalGeoJson = { type: "FeatureCollection", features: [walkableArea] };
+      const fileName = `walkable-area-${frameId}.geojson`;
+      return downloadJson(JSON.stringify(finalGeoJson, null, 2), fileName);
+    } catch (e) {
+      console.error(e);
+      messageEl.textContent = `エラー: ${e.message}`;
+      return Promise.reject(e); // エラーをPromiseで返す
+    }
+  }
+
+
   // code.tsからメッセージを受け取る
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
     
     if (msg.type === 'export-geojson-all-floors') {
-      allFloorsData = JSON.parse(msg.data); // [{ frameId: "...", geoJson: {...} }, ...]
+      allFloorsData = JSON.parse(msg.data);
       filenamePrefix = msg.filenamePrefix;
+      messageEl.textContent = `${allFloorsData.length}フロア分のデータを受信しました。`;
       
-      exportAllButton.disabled = false;
-      generateButton.disabled = false;
-      exportAllButton.textContent = `1. 全フロアのGeoJSONを保存 (${allFloorsData.length}件)`;
-      messageEl.textContent = "データ受信完了。各操作を選択してください。";
-    } 
-    else if (msg.type === 'error') {
+      masterButtonsArea.style.display = 'block'; // 一括ボタンを表示
+      separatedButtonsArea.innerHTML = ''; // 個別ボタンをクリア
+
+      allFloorsData.forEach(floorData => {
+        // ... (個別ボタンのHTML要素を作成する処理は変更なし) ...
+        // ★★★ 変更点: ボタンを動的に生成する ★★★
+
+        const floorId = floorData.frameId;
+        const floorGeoJson = floorData.geoJson;
+
+        // フロアごとのコンテナを作成
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'floor-group';
+
+        const title = document.createElement('p');
+        title.className = 'floor-title';
+        title.textContent = floorId;
+        groupDiv.appendChild(title);
+
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'floor-buttons';
+
+        const geoJsonButton = document.createElement('button');
+        geoJsonButton.textContent = 'GeoJSON保存';
+        // ★ 個別ボタンのクリックイベントに関数を紐付け
+        geoJsonButton.onclick = () => {
+            messageEl.textContent = `${floorData.frameId} のGeoJSONを保存しています...`;
+            handleSaveGeoJson(floorData).then(() => {
+                messageEl.textContent = `${floorData.frameId} のGeoJSONを保存しました。`;
+            });
+        };
+
+        const walkableButton = document.createElement('button');
+        walkableButton.textContent = '歩行可能エリア生成';
+        walkableButton.className = 'walkable';
+        // ★ 個別ボタンのクリックイベントに関数を紐付け
+        walkableButton.onclick = () => {
+            messageEl.textContent = `${floorData.frameId} の歩行可能エリアを生成しています...`;
+            handleGenerateWalkable(floorData).then(() => {
+                messageEl.textContent = `${floorData.frameId} の歩行可能エリアを生成しました。`;
+            });
+        };
+        
+        // ... (作成したボタンをDOMに追加する処理は変更なし) ...
+        buttonsDiv.appendChild(geoJsonButton);
+        buttonsDiv.appendChild(walkableButton);
+
+        groupDiv.appendChild(buttonsDiv);
+        separatedButtonsArea.appendChild(groupDiv);
+      });
+
+    } else if (msg.type === 'error') {
       messageEl.textContent = msg.message;
     }
   };
 
-  // 全フロアのGeoJSONをそれぞれダウンロード
-  exportAllButton.onclick = async () => {
+  // ★★★ 一括ボタンのクリックイベントを定義 ★★★
+
+  // 全てのGeoJSONを一括保存
+  exportAllMasterButton.onclick = async () => {
     if (!allFloorsData) return;
-    for (const floorData of allFloorsData) {
-      const correctedGeoJson = fixWindingOrder(floorData.geoJson);
-      const fileName = `${floorData.frameId}.geojson`;
-      // const fileName = `${filenamePrefix}-${floorData.frameId}.geojson`;
-      await downloadJson(JSON.stringify(correctedGeoJson, null, 2), fileName);
+    messageEl.textContent = "全フロアのGeoJSONを一括保存中...";
+    exportAllMasterButton.disabled = true;
+
+    // 個別のボタン要素を探して、順番にクリックイベントを発火させるのと同じ
+    for (const floor of allFloorsData) {
+      await handleSaveGeoJson(floor);
     }
-    messageEl.textContent = "全フロアのGeoJSONを保存しました。";
+
+    messageEl.textContent = "全フロアの保存が完了しました。";
+    exportAllMasterButton.disabled = false;
   };
-  
-  // 全フロアの歩行可能エリアをそれぞれ生成・ダウンロード
-  generateButton.onclick = async () => {
+
+  // 全ての歩行可能エリアを一括生成
+  generateAllMasterButton.onclick = async () => {
     if (!allFloorsData) return;
+    messageEl.textContent = "全フロアの歩行可能エリアを一括生成中...";
+    generateAllMasterButton.disabled = true;
 
-    messageEl.textContent = "全フロアの歩行可能エリアを計算中...";
-    generateButton.disabled = true;
-
-    try {
-      // 各フロアデータでループ処理
-      for (const floorData of allFloorsData) {
-        const floorId = floorData.frameId;
-        const floorGeoJson = floorData.geoJson;
-        messageEl.textContent = `${floorId} のエリアを計算中...`;
-
-        const baseFeatures = floorGeoJson.features.filter(f => f.properties.id === 'base');
-        const stairFeatures = floorGeoJson.features.filter(f => f.properties.id.includes('stairs')); // 'stairs'を含むかで判定
-        const obstacleFeatures = floorGeoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs') &&  !f.properties.id.includes('elevator'));
-
-        if (baseFeatures.length === 0) {
-          console.warn(`フロア "${floorId}" に "base" オブジェクトが見つかりません。`);
-          continue;
-        }
-        
-        let walkableArea = baseFeatures[0];
-
-        obstacleFeatures.forEach(obstacle => {
-          const result = turf.difference(walkableArea, obstacle);
-          if (result) walkableArea = result;
-        });
-        
-        // stairFeatures.forEach(stair => {
-        //   walkableArea = turf.union(walkableArea, stair);
-        // });
-        
-        // 元のプロパティを維持しつつ、新しい名前を付ける
-        // walkableArea.properties = {
-        //     ...walkableArea.properties,
-        //     name: `${floorId}-walkable-area`,
-        // };
-
-        const finalGeoJson = {
-          type: "FeatureCollection",
-          features: [walkableArea]
-        };
-
-        const newFileName = `walkable-area-${floorId}.geojson`;
-        await downloadJson(JSON.stringify(finalGeoJson, null, 2), newFileName);
-      }
-      messageEl.textContent = "すべてのフロアの処理が完了しました。";
-    } catch (error) {
-      console.error("歩行可能エリアの生成中にエラー:", error);
-      messageEl.textContent = `エラー: ${error.message}`;
-    } finally {
-      generateButton.disabled = false;
+    // 個別のボタン要素を探して、順番にクリックイベントを発火させるのと同じ
+    for (const floor of allFloorsData) {
+      await handleGenerateWalkable(floor);
     }
+    
+    messageEl.textContent = "全フロアの生成が完了しました。";
+    generateAllMasterButton.disabled = false;
   };
 </script>

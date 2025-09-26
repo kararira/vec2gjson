@@ -168,7 +168,7 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
 }
 
 // UIを表示し、サイズを指定する
-figma.showUI(__html__, { width: 280, height: 120 });
+figma.showUI(__html__, { width: 500, height: 500 });
 
 // -----------------------------------------------------------------
 // メインの処理
