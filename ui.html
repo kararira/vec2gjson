@@ -25,14 +25,30 @@
 
 <h2>GeoJSON エクスポート</h2>
 <button id="export-button" disabled>データを処理中...</button>
+<button id="generate-walkable-button" disabled> すべてのフロアの歩行可能エリアを生成</button>
 <p id="message"></p>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 
 <script>
   const exportButton = document.getElementById('export-button');
+  const generateButton = document.getElementById('generate-walkable-button');
   const messageEl = document.getElementById('message');
   let geoJsonData = null;
   let fileName = 'map.geojson';
+
+  function downloadJson(jsonData, fileName) {
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    // 連続ダウンロードのために少し待機
+    return new Promise(resolve => setTimeout(resolve, 100));
+  }
 
   //これいる？巻き順が決まっているらしいけどなんかなくてもうまくいく
   function fixWindingOrder(geoJsonData) {
@@ -55,9 +71,9 @@
     
     if (msg.type === 'export-geojson') {
       geoJsonData = JSON.stringify(fixWindingOrder(JSON.parse(msg.data)), null, 2);
-      // geoJsonData = msg.data;
       fileName = msg.filename;
       exportButton.disabled = false;
+      generateButton.disabled = false;
       exportButton.textContent = 'GeoJSONを保存';
       messageEl.textContent = `${msg.data.split('"Feature"').length - 1}件のデータを準備しました。`;
     } 
@@ -73,22 +89,72 @@
   // ボタンクリックでダウンロード処理を実行
   exportButton.onclick = () => {
     if (!geoJsonData) return;
+    downloadJson(geoJsonData, fileName);
+  };
 
-    // 1. Blobオブジェクトを作成
-    const blob = new Blob([geoJsonData], { type: 'application/json' });
-    
-    // 2. ダウンロード用のURLを生成
-    const url = URL.createObjectURL(blob);
-    
-    // 3. 非表示の<a>タグを作成してクリックさせる
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName; // ダウンロードファイル名を設定
-    
-    document.body.appendChild(link);
-    link.click(); // プログラム的にクリックしてダウンロードを開始
-    document.body.removeChild(link);
-    
-    URL.revokeObjectURL(url); // メモリを解放
+  // ★★★ 歩行可能エリアをフロアごとに生成するボタンの処理 ★★★
+  generateButton.onclick = async () => {
+    if (!geoJsonData) return;
+    geoJsonData = JSON.parse(geoJsonData);
+
+    messageEl.textContent = "全フロアの歩行可能エリアを計算中...";
+    generateButton.disabled = true;
+
+    try {
+      // 1. 全データからユニークなフロアIDのリストを作成
+      const floorIds = [...new Set(geoJsonData.features.map(f => f.properties.floor))];
+      console.log('対象フロア:', floorIds);
+
+      // 2. 各フロアIDでループ処理
+      for (const floorId of floorIds) {
+        messageEl.textContent = `${floorId} のエリアを計算中...`;
+
+        // 現在のフロアのフィーチャーだけを抽出
+        const floorFeatures = geoJsonData.features.filter(f => f.properties.floor === floorId);
+
+        // 床(base)、階段(stairs)、障害物(obstacles)にフィーチャーを分類
+        const baseFeatures = floorFeatures.filter(f => f.properties.id === 'base');
+        const stairFeatures = floorFeatures.filter(f => f.properties.id.split("-")[2] === 'stairs');
+        const obstacleFeatures = floorFeatures.filter(f => f.properties.id !== 'base' && f.properties.id.split("-")[2] !== 'stairs' && f.properties.id.split("-")[2] !== 'elevator');
+
+        if (baseFeatures.length === 0) {
+          console.warn(`フロア "${floorId}" に "base" オブジェクトが見つかりません。スキップします。`);
+          continue; // 次のフロアへ
+        }
+        
+        let walkableArea = baseFeatures[0];
+
+        // 床から障害物をすべて引き算
+        obstacleFeatures.forEach(obstacle => {
+          console.log(walkableArea, obstacle);
+          const result = turf.difference(turf.featureCollection([walkableArea, obstacle]));
+          if (result) {
+            walkableArea = result;
+          }
+        });
+        
+        // 階段をすべて足し算
+        // stairFeatures.forEach(stair => {
+        //   walkableArea = turf.union(walkableArea, stair);
+        // });
+        
+        const finalGeoJson = {
+          type: "FeatureCollection",
+          features: [walkableArea]
+        };
+
+        // フロアごとに別々のファイルとしてダウンロード
+        const newFileName = `walkable-area-${floorId}.geojson`;
+        await downloadJson(JSON.stringify(finalGeoJson, null, 2), newFileName);
+      }
+
+      messageEl.textContent = "すべてのフロアの処理が完了しました。";
+
+    } catch (error) {
+      console.error("歩行可能エリアの生成中にエラー:", error);
+      messageEl.textContent = `エラー: ${error.message}`;
+    } finally {
+      generateButton.disabled = false;
+    }
   };
 </script>

@@ -13,8 +13,6 @@ interface GeoJsonFeature {
   };
   properties: {
     id: string;
-    category: string;
-    floor: string;
   };
 }
 
@@ -73,7 +71,7 @@ function traceSingleLoop(segments: readonly VectorSegment[]): number[] {
   return orderedIndices;
 }
 
-const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: string) => {
+const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
   const feature_list: GeoJsonFeature[] = [];
 
   const frame_height = one_frame.height;
@@ -85,10 +83,11 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: st
     
   } else {
     targetNodes.forEach(targetNode => {
-      const nameParts = targetNode.name.split(',').map(part => part.trim());
+      const facilityId = targetNode.name;
+      // const nameParts = targetNode.name.split(',').map(part => part.trim());
       // if (nameParts.length == 0) { return; }
 
-      const [facilityName, category] = nameParts;
+      // const [facilityName, category] = nameParts;
       // const floor = parseInt(floorStr, 10);
       // if ((!floor)) { return; }
 
@@ -140,9 +139,7 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: st
             coordinates: coordinates,
           },
           properties: {
-            id: facilityName,
-            category: category ? category : "test",
-            floor: floorStr
+            id: facilityId
           },
         };
         feature_list.push(feature);
@@ -158,9 +155,7 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode, floorStr: st
             coordinates: [coordinates],
           },
           properties: {
-            id: facilityName,
-            category: category ? category : "test",
-            floor: floorStr
+            id: facilityId
           },
         };
         feature_list.push(feature);
@@ -196,7 +191,7 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
   };
 
   target_frames.forEach(one_frame => {
-    geoJson.features = geoJson.features.concat(generate_feature_list_from_one_frame(one_frame, one_frame.name));
+    geoJson.features = geoJson.features.concat(generate_feature_list_from_one_frame(one_frame));
   });
 
   // ★変更点4: UIへのメッセージ送信ロジックを整理
