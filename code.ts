@@ -5,14 +5,20 @@ interface GeoJsonFeatureCollection {
   type: "FeatureCollection";
   features: GeoJsonFeature[];
 }
+
+type GeoJsonGeometry = {
+  type: "Polygon";
+  coordinates: number[][][];
+} | {
+  type: "Point";
+  coordinates: number[];
+};
+
 interface GeoJsonFeature {
   type: "Feature";
-  geometry: {
-    type: "Polygon";
-    coordinates: number[][][];
-  };
+  geometry: GeoJsonGeometry;
   properties: {
-    id: string;
+    [key: string]: any;
   };
 }
 
@@ -156,6 +162,25 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
           },
           properties: {
             id: facilityId
+          },
+        };
+        feature_list.push(feature);
+      } else if (targetNode.type === "ELLIPSE") {
+        // 円の中心座標を計算
+        const centerX = targetNode.x + targetNode.width / 2;
+        const centerY = targetNode.y + targetNode.height / 2;
+        // 円の半径を計算 (width / 2 を半径とします)
+        const radius = targetNode.width / 2;
+
+        const feature: GeoJsonFeature = {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [centerX, frame_height - centerY],
+          },
+          properties: {
+            id: facilityId,
+            radius: radius, // 半径をプロパティに追加
           },
         };
         feature_list.push(feature);
