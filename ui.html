@@ -75,7 +75,20 @@
         throw new Error(`フロア "${frameId}" に "base" が見つかりません。`);
       }
       // const stairs = geoJson.features.filter(f => f.properties.id.includes('stairs'));
-      const obstacles = geoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs') && !f.properties.id.includes('elevator'));
+      const pre_obstacles = geoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs'));
+      // 障害物リストの中にある円（Point）をポリゴンに変換
+      const obstacles = pre_obstacles.map(obstacle => {
+          if (obstacle.geometry.type === 'Point' && obstacle.properties.radius) {
+              // Pointフィーチャーの場合、turf.circleでポリゴンに変換
+              const center = obstacle.geometry.coordinates;
+              const radius = obstacle.properties.radius;
+              // 単位はピクセルなので'meters'などを指定せず、半径をそのまま使う
+              const options = { steps: 64 }; // 64頂点で円を近似
+              return turf.circle(center, radius, options);
+          }
+          // Pointでなければ、元のポリゴンのまま返す
+          return obstacle;
+      });
 
       let walkableArea = base;
       obstacles.forEach(obs => {
