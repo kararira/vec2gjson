@@ -128,13 +128,17 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
             if (orderedVertexIndices.length < 3) return; // 3頂点未満はポリゴンにできない
             // 取得したインデックスの順序で、頂点オブジェクトの配列を再構築
             const orderedVertices = orderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
-            coordinates.push(orderedVertices.map(v => {
+            const orderedVerticesinGeojsonType = orderedVertices.map(v => {
               // 頂点の絶対座標 = ベクター自体の座標 + ベクター内の頂点座標
               const absoluteX = targetNode.x + v.x;
               const absoluteY = targetNode.y + v.y;
               // 絶対座標から基準オブジェクトの座標を引く
               return [ absoluteX, frame_height - absoluteY];
-            }));
+            });
+            if (orderedVerticesinGeojsonType.length > 0) {
+              orderedVerticesinGeojsonType.push(orderedVerticesinGeojsonType[0]);
+            }
+            coordinates.push(orderedVerticesinGeojsonType);
           });
         }
 
