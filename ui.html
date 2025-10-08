@@ -57,6 +57,27 @@
     return { type: 'FeatureCollection', features: correctedFeatures };
   }
 
+  // ★★★ 追加: ピクセル座標で円ポリゴンを生成するヘルパー関数 ★★★
+  /**
+   * 中心点と半径（ピクセル単位）から、円を近似するポリゴンフィーチャーを作成します。
+   * @param {number[]} center - [x, y]の中心座標
+   * @param {number} radius - 半径 (ピクセル)
+   * @param {object} properties - フィーチャーに付与するプロパティ
+   * @returns {object} GeoJSONのPolygon Feature
+   */
+  function createCirclePolygon(center, radius, properties) {
+    const steps = 64; // 円を64角形で近似
+    const coordinates = [];
+    for (let i = 0; i < steps; i++) {
+      const angle = (i / steps) * 2 * Math.PI;
+      const x = center[0] + radius * Math.cos(angle);
+      const y = center[1] + radius * Math.sin(angle);
+      coordinates.push([x, y]);
+    }
+    coordinates.push(coordinates[0]); // ポリゴンを閉じる
+    return turf.polygon([coordinates], properties);
+  }
+
   // ★★★ 追加: 個別処理を関数化 ★★★
 
   // 1フロア分のGeoJSONを保存する関数
@@ -77,23 +98,47 @@
       // const stairs = geoJson.features.filter(f => f.properties.id.includes('stairs'));
       const pre_obstacles = geoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs'));
       // 障害物リストの中にある円（Point）をポリゴンに変換
+      // ★ 変更点: turf.circleの代わりに自作関数を使う
       const obstacles = pre_obstacles.map(obstacle => {
           if (obstacle.geometry.type === 'Point' && obstacle.properties.radius) {
-              // Pointフィーチャーの場合、turf.circleでポリゴンに変換
               const center = obstacle.geometry.coordinates;
               const radius = obstacle.properties.radius;
-              // 単位はピクセルなので'meters'などを指定せず、半径をそのまま使う
-              const options = { steps: 64 }; // 64頂点で円を近似
-              return turf.circle(center, radius, options);
+              // ★ 自作のcreateCirclePolygon関数を呼び出す
+              return createCirclePolygon(center, radius, obstacle.properties);
           }
-          // Pointでなければ、元のポリゴンのまま返す
           return obstacle;
       });
 
       let walkableArea = base;
       obstacles.forEach(obs => {
-        const result = turf.difference(turf.featureCollection([walkableArea, obs]));
-        if (result) walkableArea = result;
+        // ★★★ デバッグ用のチェックを追加 ★★★
+        const doTheyOverlap = turf.booleanOverlap(walkableArea, obs);
+        const isContained = turf.booleanContains(walkableArea, obs);
+
+        // console.log(`障害物チェック: ${obs.properties.id}`);
+        // console.log(`  - 重なっていますか？ -> ${doTheyOverlap}`);
+        // console.log(`  - 床に完全に含まれていますか？ -> ${isContained}`);
+        
+        if (!isContained && !doTheyOverlap) {
+          console.log(`障害物チェック: ${obs.properties.id}`);
+          console.error(`  - 警告: この障害物は床ポリゴンと重なっていないため、引き算できません！座標を確認してください。`);
+          console.log(obs);
+        }
+        // ★★★ チェックここまで ★★★
+
+        // 安全のため、演算の前に両方のジオメトリをクリーンアップ
+        const cleanedWalkable = turf.cleanCoords(walkableArea);
+        const cleanedObs = turf.cleanCoords(obs);
+
+        // turf.difference(polygon1, polygon2) の形で呼び出す
+        // turf.differenceはnullを返すことがあるので、結果をチェック
+        const result = turf.difference(turf.featureCollection([cleanedWalkable, cleanedObs]));
+        
+        if (result) {
+          walkableArea = result;
+        } else {
+          console.warn(`差分計算に失敗しました。障害物オブジェクトを確認してください:`, obs.properties.id);
+        }
       });
       // stairs.forEach(s => {
       //   walkableArea = turf.union(walkableArea, s);
