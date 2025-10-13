@@ -27,6 +27,7 @@
 <div id="separated-buttons-area"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/earcut/dist/earcut.min.js"></script>
 <script>
   const masterButtonsArea = document.getElementById('master-buttons-area');
   const exportAllMasterButton = document.getElementById('export-all-master-button');
@@ -77,6 +78,47 @@
     coordinates.push(coordinates[0]); // ポリゴンを閉じる
     return turf.polygon([coordinates], properties);
   }
+
+  // ★★★ ピクセル座標系で動作する正方形分割用の自作関数 ★★★
+  /**
+   * ポリゴンを指定されたセルサイズで正方形のグリッドに分割します。
+   * @param {Feature<Polygon|MultiPolygon>} polygonFeature - 分割対象のポリゴンフィーチャ。
+   * @param {number} cellSize - 正方形の一辺の長さ（ピクセル単位）。
+   * @returns {Feature<Polygon>[]} - 分割されて生成された正方形ポリゴンのフィーチャ配列。
+   */
+  function createSquareGridInPolygon(polygonFeature, cellSize) {
+    const gridFeatures = [];
+    if (!polygonFeature || !polygonFeature.geometry) return gridFeatures;
+
+    // 1. ポリゴンのバウンディングボックスを取得
+    const bbox = turf.bbox(polygonFeature);
+    const [minX, minY, maxX, maxY] = bbox;
+
+    // 2. バウンディングボックス内を格子状にループ
+    for (let x = minX; x < maxX; x += cellSize) {
+      for (let y = minY; y < maxY; y += cellSize) {
+        // 3. 各格子の中心点を計算
+        const centerX = x + cellSize / 2;
+        const centerY = y + cellSize / 2;
+        const centerPoint = turf.point([centerX, centerY]);
+
+        // 4. 中心点がポリゴン内に含まれているかチェック
+        if (turf.booleanPointInPolygon(centerPoint, polygonFeature)) {
+          // 5. 含まれている場合、その格子を正方形ポリゴンとして生成
+          const squareCoords = [[
+            [x, y],
+            [x + cellSize, y],
+            [x + cellSize, y + cellSize],
+            [x, y + cellSize],
+            [x, y] // ポリゴンを閉じる
+          ]];
+          gridFeatures.push(turf.polygon(squareCoords));
+        }
+      }
+    }
+    return gridFeatures;
+  }
+
 
   // ★★★ 追加: 個別処理を関数化 ★★★
 
@@ -143,11 +185,19 @@
       // stairs.forEach(s => {
       //   walkableArea = turf.union(walkableArea, s);
       // });
+
+      // ★★★ 自作の正方形分割関数を呼び出すように変更 ★★★
+      if (!walkableArea) {
+        console.warn(`歩行可能エリアの生成に失敗したため、メッシュ分割をスキップします:`, frameId);
+      }
       
-      // walkableArea.properties = { ...walkableArea.properties, name: `${frameId}-walkable` };
-      const finalGeoJson = { type: "FeatureCollection", features: [walkableArea] };
-      const fileName = `walkable-area-${frameId}.geojson`;
+      const cellSize = 10; // 正方形の一辺の長さ（ピクセル）
+      const gridFeatures = createSquareGridInPolygon(walkableArea, cellSize);
+      const finalGeoJson = turf.featureCollection(gridFeatures);
+      
+      const fileName = `walkable-quads-${frameId}.geojson`;
       return downloadJson(JSON.stringify(finalGeoJson, null, 2), fileName);
+
     } catch (e) {
       console.error(e);
       messageEl.textContent = `エラー: ${e.message}`;
