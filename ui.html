@@ -96,7 +96,7 @@
         throw new Error(`フロア "${frameId}" に "base" が見つかりません。`);
       }
       // const stairs = geoJson.features.filter(f => f.properties.id.includes('stairs'));
-      const pre_obstacles = geoJson.features.filter(f => f.properties.id !== 'base' && !f.properties.id.includes('stairs'));
+      const pre_obstacles = geoJson.features.filter(f => f.properties.id !== 'base');
       // 障害物リストの中にある円（Point）をポリゴンに変換
       // ★ 変更点: turf.circleの代わりに自作関数を使う
       const obstacles = pre_obstacles.map(obstacle => {
