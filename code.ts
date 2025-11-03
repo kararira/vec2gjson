@@ -128,17 +128,13 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
             if (orderedVertexIndices.length < 3) return; // 3頂点未満はポリゴンにできない
             // 取得したインデックスの順序で、頂点オブジェクトの配列を再構築
             const orderedVertices = orderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
-            const orderedVerticesinGeojsonType = orderedVertices.map(v => {
+            coordinates.push(orderedVertices.map(v => {
               // 頂点の絶対座標 = ベクター自体の座標 + ベクター内の頂点座標
               const absoluteX = targetNode.x + v.x;
               const absoluteY = targetNode.y + v.y;
               // 絶対座標から基準オブジェクトの座標を引く
               return [ absoluteX, frame_height - absoluteY];
-            });
-            if (orderedVerticesinGeojsonType.length > 0) {
-              orderedVerticesinGeojsonType.push(orderedVerticesinGeojsonType[0]);
-            }
-            coordinates.push(orderedVerticesinGeojsonType);
+            }));
           });
         }
 
@@ -196,6 +192,35 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
   return feature_list;
 }
 
+// Function to add text around a point
+function addTextAroundPoint(x: number, y: number, text: string) {
+  const topTextNode = figma.createText();
+  topTextNode.characters = text;
+  topTextNode.x = x - topTextNode.width / 2;
+  topTextNode.y = y - 20;
+
+  const bottomTextNode = figma.createText();
+  bottomTextNode.characters = text;
+  bottomTextNode.x = x - bottomTextNode.width / 2;
+  bottomTextNode.y = y + 20;
+
+  figma.currentPage.appendChild(topTextNode);
+  figma.currentPage.appendChild(bottomTextNode);
+}
+
+// Function to process star shapes in a frame
+function processStarShapes(frameNode: FrameNode) {
+  const starNodes = frameNode.findAll(node => node.type === "STAR") as StarNode[];
+
+  starNodes.forEach(starNode => {
+    const centerX = starNode.x + starNode.width / 2;
+    const centerY = starNode.y + starNode.height / 2;
+    const name = starNode.name;
+
+    addTextAroundPoint(centerX, centerY, name);
+  });
+}
+
 // UIを表示し、サイズを指定する
 figma.showUI(__html__, { width: 500, height: 500 });
 
@@ -208,7 +233,11 @@ const selection = figma.currentPage.selection;
 if (selection.length !== 1 || selection[0].type !== 'FRAME') {
   figma.ui.postMessage({ type: 'error', message: 'フレームを1つだけ選択してください。' });
 } else {
-  const selectedFrame = selection[0];
+  const selectedFrame = selection[0] as FrameNode;
+
+  // Process star shapes in the selected frame
+  processStarShapes(selectedFrame);
+
   const target_frames = selectedFrame.children.filter((child): child is FrameNode => child.type === 'FRAME');
   if (target_frames.length === 0) {
     figma.ui.postMessage({type: "error", message: "選択したフレーム内にフレームが存在するようにしてください"});
