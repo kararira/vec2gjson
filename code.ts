@@ -1,6 +1,6 @@
 // --- code.ts ---
 
-// (interface定義は変更なし)
+// GeoJSONの型定義
 interface GeoJsonFeatureCollection {
   type: "FeatureCollection";
   features: GeoJsonFeature[];
@@ -22,7 +22,6 @@ interface GeoJsonFeature {
   };
 }
 
-// ★★★ 追加: 1つの閉路を前提とした、よりシンプルなパス追跡関数 ★★★
 /**
  * 1つの閉じたループのみで構成されていることを前提に、セグメントから頂点の描画順を再構築します。
  * @param segments ベクター全体のセグメントリスト
@@ -82,7 +81,6 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
 
   const frame_height = one_frame.height;
 
-  // const vectorNodes = one_frame.findAll(node => node.type === 'VECTOR') as VectorNode[];
   const targetNodes = one_frame.children;
   if (targetNodes.length === 0) {
     figma.ui.postMessage({ type: 'error', message: '選択されたフレーム内にベクターオブジェクトが見つかりませんでした。' });
@@ -90,12 +88,6 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
   } else {
     targetNodes.forEach(targetNode => {
       const facilityId = targetNode.name;
-      // const nameParts = targetNode.name.split(',').map(part => part.trim());
-      // if (nameParts.length == 0) { return; }
-
-      // const [facilityName, category] = nameParts;
-      // const floor = parseInt(floorStr, 10);
-      // if ((!floor)) { return; }
 
       if (targetNode.type === "VECTOR") {
         // ★変更点: 新しいtraceSingleLoop関数を呼び出す
@@ -184,41 +176,30 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode) => {
           },
         };
         feature_list.push(feature);
+      } else if (targetNode.type === "STAR") {
+        // Add STAR-specific logic
+        const { x, y, width, height } = targetNode;
+        const coordinates = [[x, y], [x + width, y], [x + width, y + height], [x, y + height], [x, y]].map((v) => {
+          return [v[0], frame_height - v[1]];
+        });
+        const feature: GeoJsonFeature = {
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [coordinates],
+          },
+          properties: {
+            id: facilityId,
+            shapeType: "STAR" // Indicate that this is a star shape
+          },
+        };
+        feature_list.push(feature);
       }
 
       
     });
   }
   return feature_list;
-}
-
-// Function to add text around a point
-function addTextAroundPoint(x: number, y: number, text: string) {
-  const topTextNode = figma.createText();
-  topTextNode.characters = text;
-  topTextNode.x = x - topTextNode.width / 2;
-  topTextNode.y = y - 20;
-
-  const bottomTextNode = figma.createText();
-  bottomTextNode.characters = text;
-  bottomTextNode.x = x - bottomTextNode.width / 2;
-  bottomTextNode.y = y + 20;
-
-  figma.currentPage.appendChild(topTextNode);
-  figma.currentPage.appendChild(bottomTextNode);
-}
-
-// Function to process star shapes in a frame
-function processStarShapes(frameNode: FrameNode) {
-  const starNodes = frameNode.findAll(node => node.type === "STAR") as StarNode[];
-
-  starNodes.forEach(starNode => {
-    const centerX = starNode.x + starNode.width / 2;
-    const centerY = starNode.y + starNode.height / 2;
-    const name = starNode.name;
-
-    addTextAroundPoint(centerX, centerY, name);
-  });
 }
 
 // UIを表示し、サイズを指定する
@@ -235,19 +216,16 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
 } else {
   const selectedFrame = selection[0] as FrameNode;
 
-  // Process star shapes in the selected frame
-  processStarShapes(selectedFrame);
-
   const target_frames = selectedFrame.children.filter((child): child is FrameNode => child.type === 'FRAME');
   if (target_frames.length === 0) {
     figma.ui.postMessage({type: "error", message: "選択したフレーム内にフレームが存在するようにしてください"});
   }
 
-  // ★★★ 変更点: フロアごとのデータを格納する配列を作成 ★★★
+  // フロアごとのデータを格納する配列を作成
   const allFloorsData: { frameId: string; geoJson: GeoJsonFeatureCollection }[] = [];
 
   target_frames.forEach(one_frame => {
-    // 各フロアのフィーチャーリストを生成
+    // 各フロアのフィーチャーリストを生成 (ここでSTARも処理される)
     const features = generate_feature_list_from_one_frame(one_frame);
 
     // フロアIDとGeoJSONデータのペアを配列に追加
@@ -262,7 +240,7 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
 
   if (allFloorsData.length > 0) {
     figma.ui.postMessage({
-      type: 'export-geojson-all-floors', // ★ メッセージタイプを変更
+      type: 'export-geojson-all-floors', // メッセージタイプを変更
       data: JSON.stringify(allFloorsData, null, 2),
       filenamePrefix: "" // ファイル名のプレフィックス
     });
@@ -270,5 +248,3 @@ if (selection.length !== 1 || selection[0].type !== 'FRAME') {
     figma.ui.postMessage({ type: 'error', message: '処理できるオブジェクトが見つかりませんでした。' });
   }
 }
-
-//postMessageは一度の実行で一度だけ（一度以上はあとに送ったもので上書きされる
