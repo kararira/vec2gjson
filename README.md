@@ -1,5 +1,5 @@
 ＃＃＃ 注意
-＊code.tsを起動するためにはnpm run watchを実行している状態でなければならない
+＊変更を加えた場合には一度npm run watchしないとだめそう
 
 Below are the steps to get your plugin running. You can also find instructions at:
 
