@@ -109,53 +109,53 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
     // -----------------
     if (targetNode.type === "VECTOR") {
       const orderedVertexIndices = traceSingleLoop(targetNode.vectorNetwork.segments);
-      if (orderedVertexIndices.length < 3) return; // 3頂点未満はポリゴンにできない
+      if (orderedVertexIndices.length >= 3) { // 3頂点以上なら処理
+        const orderedVertices = orderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
+        
+        const coordinates = [orderedVertices.map(v => {
+          const absoluteX = targetNode.x + v.x;
+          const absoluteY = targetNode.y + v.y;
+          return [ absoluteX, frame_height - absoluteY]; // Y座標を反転
+        })];
 
-      const orderedVertices = orderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
-      
-      const coordinates = [orderedVertices.map(v => {
-        const absoluteX = targetNode.x + v.x;
-        const absoluteY = targetNode.y + v.y;
-        return [ absoluteX, frame_height - absoluteY]; // Y座標を反転
-      })];
+        // ポリゴンを閉じる
+        if (coordinates.length > 0 && coordinates[0].length > 0) {
+          coordinates[0].push(coordinates[0][0]);
+        }
 
-      // ポリゴンを閉じる
-      if (coordinates.length > 0 && coordinates[0].length > 0) {
-        coordinates[0].push(coordinates[0][0]);
-      }
-
-      // 内部の穴（ドーナツポリゴン）の処理
-      if (targetNode.vectorNetwork.regions !== undefined && targetNode.vectorNetwork.regions.length > 0) {
-        targetNode.vectorNetwork.regions[0].loops.slice(1).forEach((loop) => {
-          const now_segments: VectorSegment[] = loop.map(segment_index => targetNode.vectorNetwork.segments[segment_index]);
-          const innerOrderedVertexIndices = traceSingleLoop(now_segments);
-          if (innerOrderedVertexIndices.length < 3) return;
-          
-          const innerOrderedVertices = innerOrderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
-          const innerCoordinates = innerOrderedVertices.map(v => {
-            const absoluteX = targetNode.x + v.x;
-            const absoluteY = targetNode.y + v.y;
-            return [ absoluteX, frame_height - absoluteY];
+        // 内部の穴（ドーナツポリゴン）の処理
+        if (targetNode.vectorNetwork.regions !== undefined && targetNode.vectorNetwork.regions.length > 0) {
+          targetNode.vectorNetwork.regions[0].loops.slice(1).forEach((loop) => {
+            const now_segments: VectorSegment[] = loop.map(segment_index => targetNode.vectorNetwork.segments[segment_index]);
+            const innerOrderedVertexIndices = traceSingleLoop(now_segments);
+            if (innerOrderedVertexIndices.length < 3) return;
+            
+            const innerOrderedVertices = innerOrderedVertexIndices.map(index => targetNode.vectorNetwork.vertices[index]);
+            const innerCoordinates = innerOrderedVertices.map(v => {
+              const absoluteX = targetNode.x + v.x;
+              const absoluteY = targetNode.y + v.y;
+              return [ absoluteX, frame_height - absoluteY];
+            });
+            
+            if (innerCoordinates.length > 0) {
+              innerCoordinates.push(innerCoordinates[0]); // 穴も閉じる
+            }
+            coordinates.push(innerCoordinates);
           });
-          
-          if (innerCoordinates.length > 0) {
-            innerCoordinates.push(innerCoordinates[0]); // 穴も閉じる
-          }
-          coordinates.push(innerCoordinates);
-        });
-      }
+        }
 
-      const feature: GeoJsonFeature = {
-        type: "Feature",
-        geometry: {
-          type: "Polygon",
-          coordinates: coordinates,
-        },
-        properties: {
-          id: facilityId
-        },
-      };
-      feature_list.push(feature);
+        const feature: GeoJsonFeature = {
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: coordinates,
+          },
+          properties: {
+            id: facilityId
+          },
+        };
+        feature_list.push(feature);
+      }
     
     // -----------------
     // FRAME (四角形ポリゴン or 階段)
@@ -182,29 +182,30 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
           },
         });
 
-        // 2. フレーム内部の「線」 (VectorNode) を検索
+        // 2. フレーム内部の「線」または「図形」 (VectorNode) を検索
         // findAll で FRAME 内の全 VectorNode を再帰的に検索
         const innerLines = targetNode.findAll(n => n.type === 'VECTOR') as VectorNode[];
 
         innerLines.forEach((lineVector, index) => {
-          // 線は2つの頂点と1つのセグメントで構成されると仮定
-          if (lineVector.vectorNetwork.vertices.length === 2 && lineVector.vectorNetwork.segments.length === 1) {
+          const v_len = lineVector.vectorNetwork.vertices.length;
+          const s_len = lineVector.vectorNetwork.segments.length;
+
+          // A. 単純な直線 (LineString)
+          if (v_len === 2 && s_len === 1) {
             const v1 = lineVector.vectorNetwork.vertices[0];
             const v2 = lineVector.vectorNetwork.vertices[1];
 
             // 座標を計算 (フロア基準の絶対座標)
-            // (フロア基準) = (階段フレーム座標) + (線ベクター座標) + (ベクター内頂点座標)
             const v1_abs_x = targetNode.x + lineVector.x + v1.x;
             const v1_abs_y = targetNode.y + lineVector.y + v1.y;
             const v2_abs_x = targetNode.x + lineVector.x + v2.x;
             const v2_abs_y = targetNode.y + lineVector.y + v2.y;
             
             const lineCoordinates = [
-              [v1_abs_x, frame_height - v1_abs_y], // Y座標反転
-              [v2_abs_x, frame_height - v2_abs_y]  // Y座標反転
+              [v1_abs_x, frame_height - v1_abs_y],
+              [v2_abs_x, frame_height - v2_abs_y] 
             ];
 
-            // 連番を "001", "002" ... の形式にフォーマット
             const lineIndex = (index + 1).toString().padStart(3, '0');
             const lineId = `${facilityId}-line-${lineIndex}`;
 
@@ -220,6 +221,43 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
                 category: "stairs-hatch"
               },
             });
+          
+          // ★★★ B. 三角形などの閉じた図形 (Polygon) ★★★
+          // ここが「Figmaで作られた三角形」を処理する部分です
+          } else if (v_len >= 3) {
+             const orderedVertexIndices = traceSingleLoop(lineVector.vectorNetwork.segments);
+             
+             // ちゃんとループになっているか確認
+             if (orderedVertexIndices.length >= 3) {
+                const orderedVertices = orderedVertexIndices.map(ind => lineVector.vectorNetwork.vertices[ind]);
+
+                const polyCoordinates = [orderedVertices.map(v => {
+                   // 座標計算
+                   const absoluteX = targetNode.x + lineVector.x + v.x;
+                   const absoluteY = targetNode.y + lineVector.y + v.y;
+                   return [ absoluteX, frame_height - absoluteY ]; 
+                })];
+
+                // 始点と終点を閉じる
+                if (polyCoordinates.length > 0 && polyCoordinates[0].length > 0) {
+                   polyCoordinates[0].push(polyCoordinates[0][0]);
+                }
+
+                const shapeIndex = (index + 1).toString().padStart(3, '0');
+                
+                feature_list.push({
+                  type: "Feature",
+                  geometry: {
+                    type: "Polygon", // ★Polygonとして出力
+                    coordinates: polyCoordinates,
+                  },
+                  properties: {
+                    id: `${facilityId}-shape-${shapeIndex}`,
+                    parentId: facilityId,
+                    category: "stairs-arrow-head" // ★識別しやすいカテゴリ名を付与
+                  },
+                });
+             }
           }
         });
 
@@ -242,7 +280,7 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
       }
 
     // -----------------
-    // STAR (星形 -> 四角い枠 + shapeTypeプロパティ) ★追加箇所
+    // STAR (星形 -> 四角い枠 + shapeTypeプロパティ)
     // -----------------
     } else if (targetNode.type === "STAR") {
         const { x, y, width, height } = targetNode;
@@ -259,7 +297,7 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
           },
           properties: {
             id: facilityId,
-            shapeType: "STAR" // ★ここにSTAR識別子を追加
+            shapeType: "STAR"
           },
         };
         feature_list.push(feature);
