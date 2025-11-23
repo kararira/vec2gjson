@@ -1,5 +1,3 @@
-// --- code.ts (完成版) ---
-
 // -----------------------------------------------------------------
 // 1. GeoJSON 型定義
 // -----------------------------------------------------------------
@@ -242,6 +240,29 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
         };
         feature_list.push(feature);
       }
+
+    // -----------------
+    // STAR (星形 -> 四角い枠 + shapeTypeプロパティ) ★追加箇所
+    // -----------------
+    } else if (targetNode.type === "STAR") {
+        const { x, y, width, height } = targetNode;
+        // バウンディングボックス（四角形）として座標を作成
+        const coordinates = [[x, y], [x + width, y], [x + width, y + height], [x, y + height], [x, y]].map((v) => {
+          return [v[0], frame_height - v[1]];
+        });
+
+        const feature: GeoJsonFeature = {
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [coordinates],
+          },
+          properties: {
+            id: facilityId,
+            shapeType: "STAR" // ★ここにSTAR識別子を追加
+          },
+        };
+        feature_list.push(feature);
 
     // -----------------
     // ELLIPSE (ポイント)
