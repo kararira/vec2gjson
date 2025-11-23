@@ -330,14 +330,8 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
       const centerX = x + width / 2;
       const centerY = y + height / 2;
 
-      // もし配置がずれる場合は、x, yが左上基準であることを考慮して以下を使います
-      // const centerX = x + (width/2) * Math.cos(theta) - (height/2) * Math.sin(theta);
-      // const centerY = y + (width/2) * Math.sin(theta) + (height/2) * Math.cos(theta);
-      // ※Figmaの仕様上、単純なx+w/2で中心が取れないケースがあります。
-      // ですが、ELLIPSEノードのx,yは左上バウンディングボックスであることが多いので一旦簡易計算で進めます。
-
       // ポリゴンの頂点数（カクカク解消のため32〜64くらいに増やす）
-      const steps = 32;
+      const steps = 64;
       const polygonCoords: number[][] = [];
 
       let startAngle = 0;
