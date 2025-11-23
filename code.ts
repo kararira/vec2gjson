@@ -306,19 +306,77 @@ const generate_feature_list_from_one_frame = (one_frame: FrameNode): GeoJsonFeat
     // ELLIPSE (ポイント)
     // -----------------
     } else if (targetNode.type === "ELLIPSE") {
-      const centerX = targetNode.x + targetNode.width / 2;
-      const centerY = targetNode.y + targetNode.height / 2;
-      const radius = targetNode.width / 2;
+      const { x, y, width, height, arcData } = targetNode;
+      const radiusX = width / 2;
+      const radiusY = height / 2;
+      const centerX = x + radiusX;
+      const centerY = y + radiusY;
+
+      // 楕円・円を近似する頂点数（多いほど滑らかになるがデータが増える）
+      const steps = 32; 
+      const polygonCoords: number[][] = [];
+
+      // arcDataが存在する場合はそれを使用、なければ完全な円(0〜2π)とする
+      // FigmaのarcData: startingAngle(ラジアン), endingAngle(ラジアン)
+      let startAngle = 0;
+      let endAngle = Math.PI * 2;
+      let innerRadius = 0; // ドーナツ型の場合の内径率
+
+      if (arcData) {
+        startAngle = arcData.startingAngle;
+        endAngle = arcData.endingAngle;
+        innerRadius = arcData.innerRadius;
+      }
+
+      // 円弧の長さを計算
+      let sweep = endAngle - startAngle;
+      // 逆回転等の補正
+      if (sweep < 0) sweep += Math.PI * 2;
+
+      // 外周の頂点を計算
+      for (let i = 0; i <= steps; i++) {
+        const angle = startAngle + (sweep * (i / steps));
+        // FigmaのY軸は下向き、回転は時計回り。三角関数で座標算出
+        const px = centerX + radiusX * Math.cos(angle);
+        const py = centerY + radiusY * Math.sin(angle);
+        
+        // GeoJSON用にY座標反転
+        polygonCoords.push([px, frame_height - py]);
+      }
+
+      // 半円やパックマン型の場合は、中心（または内径の点）に戻る必要がある
+      // ただし、完全な円(sweepが2π近く)の場合は始点と終点を閉じるだけでよい
+      const isFullCircle = Math.abs(sweep - Math.PI * 2) < 0.01;
+
+      if (!isFullCircle) {
+        if (innerRadius > 0) {
+           // ドーナツ型（内径がある）半円などの場合、内側の弧を描いて戻る必要がある
+           // ここでは簡易的に中心に戻る処理にします（必要であれば内径処理を追加してください）
+           polygonCoords.push([centerX, frame_height - centerY]);
+        } else {
+           // パイ型（扇形）の場合は中心に戻す
+           polygonCoords.push([centerX, frame_height - centerY]);
+        }
+      }
+      
+      // ポリゴンを閉じる（始点と同じ座標を最後に追加）
+      if (polygonCoords.length > 0) {
+        const first = polygonCoords[0];
+        const last = polygonCoords[polygonCoords.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+           polygonCoords.push(first);
+        }
+      }
 
       const feature: GeoJsonFeature = {
         type: "Feature",
         geometry: {
-          type: "Point",
-          coordinates: [centerX, frame_height - centerY], // Y座標反転
+          type: "Polygon",
+          coordinates: [polygonCoords],
         },
         properties: {
           id: facilityId,
-          radius: radius,
+          shapeType: "ELLIPSE_POLYGON"
         },
       };
       feature_list.push(feature);
